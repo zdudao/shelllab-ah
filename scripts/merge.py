@@ -6,11 +6,13 @@
     # realm=Eversong Wilds
     # faction=Alliance
     871,1793376000,88888888
-    4411,1793376000,60000000
+    4411,1793376000,60000000,775
 
 注意：服务器名可能带空格（Eversong Wilds / Basin of Stars），
 所以 realm 和 faction 必须各占一行，不能写在一行里用空格分隔。
-数据行三列：物品ID,日期(天级时间戳),价格(铜币)
+数据行三列或四列：物品ID,日期(天级时间戳),价格(铜币)[,随机词缀ID]
+第四列省略时当作 0（普通物品）。AUX 里同一件装备不同词缀是分开记价的，
+词缀不能丢，否则一合并就会把「巨熊之」「鹰之」的价格搅在一起。
 """
 import os
 import glob
@@ -61,17 +63,18 @@ def load(path):
                         realm, faction = val
                 continue
             parts = line.split(',')
-            if len(parts) != 3:
+            if len(parts) not in (3, 4):
                 continue  # 坏行直接跳过，不因一行坏数据整批失败
             try:
                 item = int(parts[0])
                 day = int(parts[1])
                 price = int(parts[2])
+                suffix = int(parts[3]) if len(parts) == 4 else 0
             except ValueError:
                 continue
             if realm is None:
                 continue
-            data.setdefault((realm, faction), {})[(item, day)] = price
+            data.setdefault((realm, faction), {})[(item, suffix, day)] = price
             n += 1
     return n
 
@@ -86,8 +89,11 @@ def save():
         lines.append('# realm=%s' % realm)
         lines.append('# faction=%s' % faction)
         rows = data[key]
-        for (item, day), price in sorted(rows.items()):
-            lines.append('%d,%d,%d' % (item, day, price))
+        for (item, suffix, day), price in sorted(rows.items()):
+            if suffix:
+                lines.append('%d,%d,%d,%d' % (item, day, price, suffix))
+            else:
+                lines.append('%d,%d,%d' % (item, day, price))
     with open(OUT, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
 

@@ -1,0 +1,32 @@
+name: 合并拍卖行投稿
+
+on:
+  push:
+    paths:
+      - 'incoming/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 合并投稿
+        run: python3 scripts/merge.py
+
+      - name: 提交结果
+        run: |
+          git config user.name "shelllab-ah-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A prices.csv incoming/
+          if git diff --staged --quiet; then
+            echo "没有变化，跳过提交"
+          else
+            git commit -m "合并投稿 $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi

@@ -3,10 +3,13 @@
 """合并玩家投稿的拍卖行数据包，生成总表 prices.csv。
 
 投稿包和总表用同一种格式，方便互相导入：
-    # realm=Eversong Wilds faction=Alliance
+    # realm=Eversong Wilds
+    # faction=Alliance
     871,1793376000,88888888
     4411,1793376000,60000000
 
+注意：服务器名可能带空格（Eversong Wilds / Basin of Stars），
+所以 realm 和 faction 必须各占一行，不能写在一行里用空格分隔。
 数据行三列：物品ID,日期(天级时间戳),价格(铜币)
 """
 import os
@@ -20,6 +23,21 @@ OUT = 'prices.csv'
 data = {}
 
 
+def read_meta(line):
+    """解析一行元信息（# 开头），返回 (key, value) 或 None。"""
+    seg = line[1:].strip()
+    if seg.startswith('realm='):
+        v = seg[len('realm='):].strip()
+        # 兼容旧格式：一行里同时写了 faction=
+        i = v.rfind(' faction=')
+        if i >= 0:
+            return ('realm_both', (v[:i].strip(), v[i + len(' faction='):].strip()))
+        return ('realm', v)
+    if seg.startswith('faction='):
+        return ('faction', seg[len('faction='):].strip())
+    return None
+
+
 def load(path):
     """读一个 CSV（投稿包或已有总表），返回解析出的数据行数"""
     realm = None
@@ -31,13 +49,16 @@ def load(path):
             if not line:
                 continue
             if line.startswith('#'):
-                # 元信息行：# realm=xxx faction=yyy ...
-                seg = line[1:]
-                for part in seg.split():
-                    if part.startswith('realm='):
-                        realm = part[len('realm='):]
-                    elif part.startswith('faction='):
-                        faction = part[len('faction='):]
+                # 元信息行：# realm=xxx / # faction=yyy
+                meta = read_meta(line)
+                if meta:
+                    key, val = meta
+                    if key == 'realm':
+                        realm = val
+                    elif key == 'faction':
+                        faction = val
+                    elif key == 'realm_both':
+                        realm, faction = val
                 continue
             parts = line.split(',')
             if len(parts) != 3:
@@ -57,12 +78,13 @@ def load(path):
 
 def save():
     """写出总表，按服务器/阵营分组"""
-    now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    now = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     lines = ['# ShellLab 拍卖行总表 v1',
              '# 更新时间=%s 记录数=%d' % (now, sum(len(v) for v in data.values()))]
     for key in sorted(data.keys()):
         realm, faction = key
-        lines.append('# realm=%s faction=%s' % (realm, faction))
+        lines.append('# realm=%s' % realm)
+        lines.append('# faction=%s' % faction)
         rows = data[key]
         for (item, day), price in sorted(rows.items()):
             lines.append('%d,%d,%d' % (item, day, price))
